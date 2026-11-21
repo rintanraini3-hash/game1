@@ -1,0 +1,149 @@
+<!doctype html>
+<html lang="id">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Tangkap Ikan Jepara</title>
+<link href="https://fonts.googleapis.com/css2?family=Fredoka:wght@500;700&display=swap" rel="stylesheet">
+<style>
+:root{--bg:#04222a;--sea:#0e5566;--sand:#f4dca6;--coral:#ff6b4a;--ink:#031a20;color-scheme:dark;box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}
+html{height:100%;scroll-padding-top:env(safe-area-inset-top,0px)}
+body{margin:0;height:100%;background:var(--bg);display:flex;align-items:center;justify-content:center;font-family:"Fredoka","Trebuchet MS",system-ui,sans-serif;color:var(--sand);touch-action:none;-webkit-user-select:none;user-select:none}
+#wrap{position:relative;height:100%;max-width:100%;aspect-ratio:9/14}
+canvas{display:block;height:100%;width:100%;background:var(--sea)}
+#ov{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:14px;text-align:center;padding:24px;background:rgba(4,34,42,.82)}
+#ov h1{font-size:clamp(30px,8vw,44px);margin:0;line-height:1.05;font-weight:700}
+#ov p{margin:0;max-width:26ch;line-height:1.45;font-size:17px}
+#ov .big{font-size:56px;font-weight:700;color:var(--coral);line-height:1}
+button{font:inherit;font-weight:700;font-size:20px;background:var(--coral);color:var(--ink);border:0;border-radius:999px;padding:12px 34px;cursor:pointer}
+button:focus-visible{outline:3px solid var(--sand);outline-offset:3px}
+.hide{display:none!important}
+</style>
+</head>
+<body>
+<div id="wrap">
+  <canvas id="c" aria-label="Area permainan"></canvas>
+  <div id="ov">
+    <h1 id="t">Tangkap Ikan Jepara</h1>
+    <div id="big" class="big hide"></div>
+    <p id="d">Geser perahu ke kiri dan kanan. Tangkap ikan, hindari sampah dan ubur-ubur.</p>
+    <button id="go">Main</button>
+  </div>
+</div>
+<script>
+(function(){
+var W=360,H=560,c=document.getElementById('c'),x=c.getContext('2d');
+c.width=W*2;c.height=H*2;x.scale(2,2);
+var ov=document.getElementById('ov'),big=document.getElementById('big'),
+    tt=document.getElementById('t'),dd=document.getElementById('d'),go=document.getElementById('go');
+var best=0;
+try{best=parseInt(localStorage.getItem('ikan-best'))||0}catch(e){}
+var st='menu',boat,target,items,pops,score,lives,combo,speed,timer,t=0,last=0,keys={},shake=0;
+var TYPES=[
+  {e:'\uD83D\uDC1F',v:1,bad:false,p:.58},
+  {e:'\uD83D\uDC20',v:5,bad:false,p:.12},
+  {e:'\uD83E\uDD64',v:0,bad:true,p:.16},
+  {e:'\uD83E\uDEBC',v:0,bad:true,p:.14}
+];
+function reset(){boat=target=W/2;items=[];pops=[];score=0;lives=3;combo=0;speed=1;timer=0;shake=0}
+function start(){reset();st='play';ov.classList.add('hide')}
+function end(){
+  st='over';
+  if(score>best){best=score;try{localStorage.setItem('ikan-best',best)}catch(e){}}
+  tt.textContent='Perahu tenggelam';
+  big.textContent=score;big.classList.remove('hide');
+  dd.textContent='Rekor terbaik: '+best+'. Coba lagi untuk melampauinya.';
+  go.textContent='Main lagi';
+  ov.classList.remove('hide');go.focus();
+}
+go.onclick=start;
+function pick(){var r=Math.random(),a=0;for(var i=0;i<TYPES.length;i++){a+=TYPES[i].p;if(r<a)return TYPES[i]}return TYPES[0]}
+function spawn(){
+  var ty=pick();
+  items.push({ty:ty,x:24+Math.random()*(W-48),y:-20,ph:Math.random()*6,sw:ty.bad?0:8+Math.random()*10});
+}
+function pop(tx,px,py,col){pops.push({s:tx,x:px,y:py,a:1,col:col})}
+function update(dt){
+  t+=dt;
+  var k=(keys.ArrowRight||keys.d?1:0)-(keys.ArrowLeft||keys.a?1:0);
+  if(k)target=Math.max(30,Math.min(W-30,target+k*420*dt));
+  boat+=(target-boat)*Math.min(1,dt*14);
+  if(st!=='play')return;
+  speed=1+Math.min(1.6,score/60);
+  timer-=dt;
+  if(timer<=0){spawn();timer=Math.max(.32,.85-score*.006)}
+  for(var i=items.length-1;i>=0;i--){
+    var it=items[i];
+    it.y+=(130+60*speed)*dt;
+    it.dx=Math.sin(t*2+it.ph)*it.sw;
+    var ix=it.x+it.dx;
+    if(it.y>H-120&&it.y<H-62&&Math.abs(ix-boat)<38){
+      items.splice(i,1);
+      if(it.ty.bad){
+        lives--;combo=0;shake=.25;pop('\u2212 nyawa',ix,it.y,'#ff6b4a');
+        if(lives<=0){end();return}
+      }else{
+        combo++;
+        var m=1+Math.floor(combo/5),g=it.ty.v*m;
+        score+=g;pop('+'+g,ix,it.y,'#f4dca6');
+      }
+    }else if(it.y>H+20){items.splice(i,1)}
+  }
+  for(var j=pops.length-1;j>=0;j--){var p=pops[j];p.y-=40*dt;p.a-=dt*1.1;if(p.a<=0)pops.splice(j,1)}
+  if(shake>0)shake-=dt;
+}
+function draw(){
+  var sx=shake>0?(Math.random()-.5)*8:0;
+  x.save();x.translate(sx,0);
+  var g=x.createLinearGradient(0,0,0,H);
+  g.addColorStop(0,'#1d7a8c');g.addColorStop(.35,'#0e5566');g.addColorStop(1,'#04222a');
+  x.fillStyle=g;x.fillRect(-10,0,W+20,H);
+  x.fillStyle='rgba(244,220,166,.9)';x.beginPath();x.arc(290,70,34,0,7);x.fill();
+  for(var r=0;r<5;r++){
+    x.strokeStyle='rgba(244,220,166,'+(.18-r*.025)+')';x.lineWidth=2;x.beginPath();
+    for(var px=-10;px<=W+10;px+=10){
+      var py=H-90+r*18+Math.sin(px/28+t*1.6+r)*4;
+      px===-10?x.moveTo(px,py):x.lineTo(px,py);
+    }
+    x.stroke();
+  }
+  x.textAlign='center';x.textBaseline='middle';
+  x.font='30px serif';
+  items.forEach(function(it){x.fillText(it.ty.e,it.x+(it.dx||0),it.y)});
+  var bob=Math.sin(t*3)*3;
+  x.font='54px serif';x.fillText('\u26F5',boat,H-92+bob);
+  x.fillStyle='#031a20';x.beginPath();x.ellipse(boat,H-66+bob,34,6,0,0,7);x.fill();
+  x.font='700 18px Fredoka,sans-serif';
+  pops.forEach(function(p){x.globalAlpha=Math.max(0,p.a);x.fillStyle=p.col;x.fillText(p.s,p.x,p.y)});
+  x.globalAlpha=1;
+  x.fillStyle='#f4dca6';x.textAlign='left';x.font='700 26px Fredoka,sans-serif';
+  x.fillText(score,16,28);
+  x.font='500 14px Fredoka,sans-serif';x.fillStyle='rgba(244,220,166,.75)';
+  x.fillText('Rekor '+best,16,52);
+  if(combo>=5){x.fillStyle='#ff6b4a';x.fillText('Kombo x'+(1+Math.floor(combo/5)),16,72)}
+  x.textAlign='right';x.font='22px serif';
+  var h='';for(var i=0;i<3;i++)h+=i<lives?'\u2764\uFE0F':'\uD83E\uDE76';
+  x.fillText(h,W-14,28);
+  x.restore();
+}
+function loop(ts){
+  var dt=Math.min(.05,(ts-last)/1000||0);last=ts;
+  update(dt);draw();requestAnimationFrame(loop);
+}
+function setX(e){
+  var r=c.getBoundingClientRect();
+  target=Math.max(30,Math.min(W-30,(e.clientX-r.left)/r.width*W));
+}
+c.addEventListener('pointermove',setX);
+c.addEventListener('pointerdown',setX);
+addEventListener('keydown',function(e){
+  keys[e.key]=true;
+  if((e.key==='Enter'||e.key===' ')&&st!=='play'&&document.activeElement!==go){start()}
+});
+addEventListener('keyup',function(e){keys[e.key]=false});
+reset();
+requestAnimationFrame(loop);
+})();
+</script>
+</body>
+</html>
